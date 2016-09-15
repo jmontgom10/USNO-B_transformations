@@ -18,12 +18,6 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import corner
 
-def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
-    new_cmap = colors.LinearSegmentedColormap.from_list(
-        'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=minval, b=maxval),
-        cmap(np.linspace(minval, maxval, n)))
-    return new_cmap
-
 ################################################################################
 # DEFINE FUNCTIONS FOR DEALING WITH COVARIANCE MATRICES
 ################################################################################
@@ -81,10 +75,9 @@ def convert_covariance_to_angle(sx, sy, rhoxy):
 landoltFile  = 'landoltStars.csv'
 landoltStars = Table.read(landoltFile)
 
-
 # Color relations and plots
 ################ Relation 1 ################
-# U = O + C1*(O - E) + C2
+# V = O + C1*(O - E) + C2
 ############################################
 # Cull any bad values from the table
 goodStars = np.logical_not(landoltStars['Jmag'].data.mask)
@@ -144,7 +137,7 @@ bounds = [(-0.65, -0.45),     # Theta (angle of the line slope)
           (0, 5)]           # lnVy (log-y-variance of outlier distribution)
 
 plotBounds = [(-0.65, -0.45),     # Theta (angle of the line slope)
-          (-0.2, 0.2)]    # b_perp (min-dist(line-origin))
+              (-0.2, 0.2)]    # b_perp (min-dist(line-origin))
 
 # Define a prior function for the parameters
 def ln_prior(params):
@@ -258,13 +251,11 @@ aspect  = 1.0 # For corner plots, make things square
 
 # Prepare the x-axis lengths
 xsize   = 3.39375                 # Set the figure width to full text width
-lmargin = 0.55/xsize              # Set the left margin size (l-inches/width)
-rmargin = 0.22/xsize              # Set the right margin fraction (r-inches/width)
+lmargin = 0.45/xsize              # Set the left margin size (l-inches/width)
+rmargin = 0.12/xsize              # Set the right margin fraction (r-inches/width)
 # Preapre the y-axis lengths
-bmargin = 0.44/xsize              # Set the bottom margin fraction
-vspace  = 0.10/xsize              # Set the space between image and colorbar
-cbar    = 0.20/xsize              # Set the colorbar height
-tmargin = 0.25/xsize              # Set the top margin fraction (colorbar labels)
+bmargin = 0.45/xsize              # Set the bottom margin fraction
+tmargin = 0.12/xsize              # Set the top margin fraction (colorbar labels)
 
 b     = (1 - (lmargin + rmargin)) #Calculate the xsize-normalized plot region width
 a     = (b*aspect)                #Calculate the xsize-normalized plot region height
@@ -295,17 +286,17 @@ params_guess    = np.array([np.mean(b) for b in bounds])
 data            = (O_E, V_O, sig_OE, sig_VO)
 
 # Sampler values for the actual run...
-n_walkers       = 500
-n_burn_in_steps = 150
-n_steps         = 2000
+# n_walkers       = 500
+# n_burn_in_steps = 150
+# n_steps         = 2000
 
 # Sampler values for debugging...
-# n_walkers       = 50
-# n_burn_in_steps = 150
-# n_steps         = 1000
+n_walkers       = 50
+n_burn_in_steps = 150
+n_steps         = 1000
 
 # Number of times to repeat sampling process.
-n_loops         = 5
+n_loops = 1
 
 for iLoop in range(n_loops):
     print('Starting MCMC loop {0:d}'.format(iLoop + 1))
@@ -330,140 +321,18 @@ for iLoop in range(n_loops):
         zip(*np.percentile(samplerData, [16, 50, 84], axis=0))]
     truths = [t[0] for t in truthRanges]
 
-    # Initalize the figure frame
-    dataDim    = samplerData.shape[1]
-    fig1, axes = plt.subplots(dataDim, dataDim, figsize=(xsize, ysize))
-
-    # Define the key word arguments for the corner plot 2D histograms
-    hist2d_kwargs = hist2d_kwargs = {"plot_contours":True,
-        "no_fill_contours":True,"fill_contours":False,"plot_density":False,
-        "plot_datapoints":False}
-
-    # Use the "corner" class to produce a posterior distribution plot
-    fig1 = corner.corner(samplerData, fig = fig1,
-        bins=50, range=plotBounds, truths=truths,
-        hist2d_kwargs = hist2d_kwargs,
-        labels=plotLabels, label_kwargs={'fontsize':8})
-
-    # Loop through all the remaining axes in the figure
-    for ax in fig1.get_axes():
-        # Loop through all the x-tick labels on those axes and set fontsize
-        [l.set_fontsize(8) for l in ax.get_xticklabels()]
-
-        # Now do the same for the y-axis...
-        # Loop through all the y-tick labels on those axes and set fontsize
-        [l.set_fontsize(8) for l in ax.get_yticklabels()]
-
-    # Construct the figure name
-    fig1Name = figName + '_post{0:d}.eps'.format(iLoop+1)
-    fig1Path = os.path.join(figDir, fig1Name)
-    fig1.savefig(fig1Path, format = figFmt)
-
-    # Get rid of the figure
-    plt.clf()
-    del fig1
-
-    ################################################################################
-    # COMPUTE THE POSTERIOR PROBABILITY THAT EACH DATA-POINT IS "GOOD"
-    ################################################################################
-    norm = 0.0
-    post_prob = np.zeros(len(data[0]))
-    for i in range(sampler.chain.shape[1]):
-        for j in range(sampler.chain.shape[0]):
-            ll_fg, ll_bg = sampler.blobs[i][j]
-            post_prob += np.exp(ll_fg - np.logaddexp(ll_fg, ll_bg))
-            norm += 1
-    post_prob /= norm
-
-    # print('Probability that each point is good')
-    # for xpt, ypt, xyGoodProb in zip(data[0], data[1], post_prob):
-    #     print('({0}, {1}) -- {2}'.format(xpt, ypt, xyGoodProb))
-
-    ################################################################################
-    # PLOT THE ACTUAL DATA AND THE BEST FIT (WITH A SAMPLE OF ACCEPTABLE FITS DRAWN
-    # FROM THE MARINALIZED POSTERIEOR DISTRIBUTION).
-    ################################################################################
-    fig2 = plt.figure(figsize=(xsize, ysize))
-
-    # Initalize the axes to fill the specified rectangle shape
-    # rect is in the form [left, bottom, width, height] (normalized coords)
-    rect2 = (x1, y1, (x2-x1), (y2-y1))
-    ax2   = fig2.add_axes(rect2)
-
-    # Grab just the (x, y) photometry values for scatter plotting
-    xData, yData = data[0:2]
-
-    # Create a new colormap for the scatter plot markers.
-    # Color will indicate the marginalized posterior probability that a given
-    # data point is an outlier.
-    new_cmap = truncate_colormap(plt.get_cmap("gray_r"), 0.5, 1.0, n=100)
-
-    # Plot down the basic data-points and freeze the axes
-    ax2.scatter(xData, yData, marker='.', s=22, c=post_prob, cmap=new_cmap,
-        edgecolors='none', zorder = 1000)
-
-    # Set the plot range, and turn-off autoscaling
-    ax2.axis((-2.0, 5.0, -4.3, 2.1))
-    ax2.autoscale(False)
-
-    # Plot the slope +/- sigma_intrinsic lines
-    # Start by including a "typical errorbar"
-    ax2.errorbar(-1.0, -3.0, xerr=data[2], yerr=data[3], color='k')
-
-    # # Create a vector spaning the range of the plot
-    # xl = np.array(ax2.get_xlim())
-    #
-    # # Grab JUST the samples for the slope and intercept
-    # samples = sampler.flatchain[:,0:2]
-    # for theta, b_perp in samples[np.random.randint(len(samples), size=100)]:
-    #     m, b = np.tan(theta), b_perp/np.cos(theta)
-    #     ax2.plot(xl, m*xl + b, color="k", alpha=0.1)
-
-
-    # Create a vector spaning the x-range of the plot
-    xl = np.array(ax2.get_xlim())
-
-    # Perform the linear algebra to compute the fill region of "acceptable fits"
-    xSample   = np.linspace(xl.min(), xl.max(), 200)
-    Amatrix   = np.vander(xSample, 2)
-    fitVals   = np.array(
-        [np.tan(sampler.flatchain[:,0]),
-        sampler.flatchain[:,1]/np.cos(sampler.flatchain[:,0])]).T
-    lines     = np.dot(fitVals, Amatrix.T)
-    quantiles = np.percentile(lines, [16, 84], axis=0)
-
-    # Fill in 1-sigma region with a red polygon
-    ax2.fill_between(xSample, quantiles[0], quantiles[1], color="r", zorder = 999)
-
-    # Plot the best fitting line line
-    mBest, bBest = np.tan(truths[0]), truths[1]/np.cos(truths[0])
-    ax2.plot(xl, mBest*xl + bBest, color="k", lw=1.5, zorder=1001)
-
-    ax2.set_xlabel("$O - E$")
-    ax2.set_ylabel("$V - O$")
-
-    # Construct the figure name
-    fig2Name = figName + '_MCMC{0:d}.eps'.format(iLoop+1)
-    fig2Path = os.path.join(figDir, fig2Name)
-    fig2.savefig(fig2Path, format = figFmt)
-
-    # Get rid of the figure
-    plt.clf()
-    del fig2
-
     ###############################################
     #### TREAT COVARIANCE OF FITTED PARAMETERS ####
     ###############################################
     # Figure out the linear fit uncertainties
     # Start by transforming the samples into slope / intercept space
     transformedSamples = np.array(
-        (np.tan(sampler.flatchain[:,0]),
-         sampler.flatchain[:,1]/np.cos(sampler.flatchain[:,0])))
-    transformedSamples = transformedSamples.T
+        [np.tan(sampler.flatchain[:,0]),
+         sampler.flatchain[:,1]/np.cos(sampler.flatchain[:,0])])
 
     # Grab the quartiles of the transformed samples
     slopeIntRanges = [(v[1], v[2]-v[1], v[1]-v[0]) for v in
-        zip(*np.percentile(transformedSamples, [16, 50, 84], axis=0))]
+        zip(*np.percentile(transformedSamples, [16, 50, 84], axis=1))]
 
     # Now estimate the best fit using the transformed sample
     a2,  a1  = slopeIntRanges[0][0], slopeIntRanges[1][0]
@@ -477,12 +346,9 @@ for iLoop in range(n_loops):
     # Compute the covariance matrix of the linear fit parameters (slope, intercept)
     # First collecet the relevant samples and transform the monte-carlo
     # (theta, b_perp) values into (slope, intercept) values.
-    data1  = np.array(
-        [np.tan(sampler.flatchain[:,0]),
-        sampler.flatchain[:,1]/np.cos(sampler.flatchain[:,0])])
 
     # The above code is good for reference, but here is teh actual numpy method
-    cov = np.cov(data1)
+    cov = np.cov(transformedSamples.T)
 
     print('The co-variance matrix for the fitted parameters is')
     print('1000x')
@@ -491,8 +357,127 @@ for iLoop in range(n_loops):
     print(1000.0*cov)
 
     # Add a row to the table...
-    fitValTable.add_row((mBest, bBest, cov[0,0], cov[1,1], cov[0,1]))
+    fitValTable.add_row((a2, a1, cov[0,0], cov[1,1], cov[0,1]))
 
 # Save the table
 fitValTable.write(figName + '_fitVals.csv', format='ascii.csv')
+
+################################################################################
+# Generate figures
+################################################################################
+print('Generating example figures from final sampling run')
+
+# Initalize the figure frame
+dataDim    = samplerData.shape[1]
+fig1, axes = plt.subplots(dataDim, dataDim, figsize=(xsize, ysize))
+
+# Define the key word arguments for the corner plot 2D histograms
+hist2d_kwargs = hist2d_kwargs = {"plot_contours":True,
+    "no_fill_contours":True,"fill_contours":False,"plot_density":False,
+    "plot_datapoints":False}
+
+# Use the "corner" class to produce a posterior distribution plot
+fig1 = corner.corner(samplerData, fig = fig1,
+    bins=50, range=plotBounds, truths=truths,
+    hist2d_kwargs = hist2d_kwargs,
+    labels=plotLabels, label_kwargs={'fontsize':8})
+
+pdb.set_trace()
+# Reset the figure margins to conservatively use space...
+fig1.subplots_adjust(left=lmargin ,right=rmargin, top=tmargin ,bottom=bmargin)
+
+# Loop through all the remaining axes in the figure
+for ax in fig1.get_axes():
+    # Loop through all the x-tick labels on those axes and set fontsize
+    [l.set_fontsize(8) for l in ax.get_xticklabels()]
+
+    # Now do the same for the y-axis...
+    # Loop through all the y-tick labels on those axes and set fontsize
+    [l.set_fontsize(8) for l in ax.get_yticklabels()]
+
+# Construct the figure name
+fig1Name = figName + '_post{0:d}.eps'.format(iLoop+1)
+fig1Path = os.path.join(figDir, fig1Name)
+fig1.savefig(fig1Path, format = figFmt)
+pdb.set_trace()
+
+# Get rid of the figure
+plt.clf()
+del fig1
+
+################################################################################
+# COMPUTE THE POSTERIOR PROBABILITY THAT EACH DATA-POINT IS "GOOD"
+################################################################################
+norm = 0.0
+post_prob = np.zeros(len(data[0]))
+for i in range(sampler.chain.shape[1]):
+    for j in range(sampler.chain.shape[0]):
+        ll_fg, ll_bg = sampler.blobs[i][j]
+        post_prob += np.exp(ll_fg - np.logaddexp(ll_fg, ll_bg))
+        norm += 1
+post_prob /= norm
+
+################################################################################
+# PLOT THE ACTUAL DATA AND THE BEST FIT (WITH A SAMPLE OF ACCEPTABLE FITS DRAWN
+# FROM THE MARINALIZED POSTERIEOR DISTRIBUTION).
+################################################################################
+fig2 = plt.figure(figsize=(xsize, ysize))
+
+# Initalize the axes to fill the specified rectangle shape
+# rect is in the form [left, bottom, width, height] (normalized coords)
+rect2 = (x1, y1, (x2-x1), (y2-y1))
+ax2   = fig2.add_axes(rect2)
+
+# Grab just the (x, y) photometry values for scatter plotting
+xData, yData = data[0:2]
+
+# Create a new colormap for the scatter plot markers.
+# Color will indicate the marginalized posterior probability that a given
+# data point is an outlier.
+new_cmap = truncate_colormap(plt.get_cmap("gray_r"), 0.5, 1.0, n=100)
+
+# Plot down the basic data-points and freeze the axes
+ax2.scatter(xData, yData, marker='.', s=22, c=post_prob, cmap=new_cmap,
+    edgecolors='none', zorder = 1000)
+
+# Set the plot range, and turn-off autoscaling
+ax2.axis((-2.0, 5.0, -4.3, 2.1))
+ax2.autoscale(False)
+
+# Plot the slope +/- sigma_intrinsic lines
+# Start by including a "typical errorbar"
+ax2.errorbar(-1.0, -3.0, xerr=data[2], yerr=data[3], color='k')
+
+# Create a vector spaning the x-range of the plot
+xl = np.array(ax2.get_xlim())
+
+# Perform the linear algebra to compute the fill region of "acceptable fits"
+xSample   = np.linspace(xl.min(), xl.max(), 200)
+Amatrix   = np.vander(xSample, 2)
+fitVals   = np.array(
+    [np.tan(sampler.flatchain[:,0]),
+    sampler.flatchain[:,1]/np.cos(sampler.flatchain[:,0])]).T
+lines     = np.dot(fitVals, Amatrix.T)
+quantiles = np.percentile(lines, [16, 84], axis=0)
+
+# Fill in 1-sigma region with a red polygon
+ax2.fill_between(xSample, quantiles[0], quantiles[1], color="r", zorder = 999)
+
+# Plot the best fitting line line
+mBest, bBest = np.tan(truths[0]), truths[1]/np.cos(truths[0])
+ax2.plot(xl, mBest*xl + bBest, color="k", lw=1.5, zorder=1001)
+
+ax2.set_xlabel("$O - E$")
+ax2.set_ylabel("$V - O$")
+
+# Construct the figure name
+fig2Name = figName + '_MCMC{0:d}.eps'.format(iLoop+1)
+fig2Path = os.path.join(figDir, fig2Name)
+fig2.savefig(fig2Path, format = figFmt)
+
+# Get rid of the figure
+plt.clf()
+del fig2
+
+
 print('done')
