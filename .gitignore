@@ -1,3 +1,15 @@
+# Ignore encapsulated post script (EPS) files and portable network graphics
+# (PNG) files.
+*.png
+*.eps
+
+# Ignore the exercises done for practice and the old orthogonal distance
+# regression (ODR) solutions.
+figs/
+easyFits/
+exercises/
+old/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
